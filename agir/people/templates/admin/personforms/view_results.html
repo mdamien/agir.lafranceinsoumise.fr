@@ -30,6 +30,14 @@
 
 {% block content %}
 
+  {% for label, field_summary in summary %}
+
+    <h3>{{ label }}</h3>
+
+    {{ field_summary|safe }}
+
+  {% endfor %}
+
   <table>
     <tr>
       {% for header in headers %}

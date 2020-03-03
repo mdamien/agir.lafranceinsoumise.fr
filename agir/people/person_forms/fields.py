@@ -1,26 +1,21 @@
 import logging
+from collections import Counter
 from uuid import UUID
 
-from datetime import datetime
+import iso8601
 from django import forms
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.template.defaultfilters import filesizeformat
 from django.utils.deconstruct import deconstructible
-from django.utils.translation import ugettext as _
 from django.utils.formats import localize_input
-
-import iso8601
-
+from django.utils.translation import ugettext as _
 from phonenumber_field.formfields import PhoneNumberField
 
 from agir.events.models import Event
 from agir.lib.data import departements_choices, regions_choices
 from agir.lib.form_fields import DateTimePickerWidget, SelectizeWidget, IBANField
-from agir.lib.token_bucket import TokenBucket
-
 from ..models import Person
-
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +29,10 @@ class NotRequiredByDefaultMixin:
 
 
 class ShortTextField(forms.CharField):
+    choices = None
+
     def __init__(self, *args, choices=None, **kwargs):
+        self.choices = choices
         if choices is not None:
             self.widget = SelectizeWidget(
                 create=True,
@@ -48,6 +46,14 @@ class ShortTextField(forms.CharField):
             )
 
         super().__init__(*args, **kwargs)
+
+    def summary(self, submissions, id):
+        if self.choices is None:
+            filter = {f"data__{id}": None}
+            return f"{submissions.exclude(**filter)} réponses"
+
+        filter = {f"data__{id}__in": dict(self.choices).keys()}
+        return Counter(submissions.filter(**filter).values_list(f"data__{id}"))
 
 
 class LongTextField(forms.CharField):

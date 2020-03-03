@@ -16,6 +16,7 @@ from agir.people.actions.management import merge_persons
 from agir.people.admin.forms import AddPersonEmailForm, ChoosePrimaryAccount
 from agir.people.models import Person
 from agir.people.person_forms.display import default_person_form_display
+from agir.people.person_forms.fields import get_form_field
 from agir.people.person_forms.models import PersonForm
 
 
@@ -24,6 +25,18 @@ class FormSubmissionViewsMixin:
 
     def get_submission_queryset(self, form):
         return form.submissions.all()
+
+    def generate_result_summary(self, form):
+        submissions = self.get_submission_queryset(form)
+
+        return [
+            (field.label, field.summary(submissions, id))
+            for id, field in [
+                (id, get_form_field(field_descriptor))
+                for id, field_descriptor in form.fields_dict.items()
+            ]
+            if hasattr(field, "summary")
+        ]
 
     def generate_result_table(self, form, html=True, fieldsets_titles=True):
         submissions = self.get_submission_queryset(form)
@@ -50,6 +63,7 @@ class FormSubmissionViewsMixin:
             "form": table["form"],
             "headers": table["headers"],
             "submissions": table["submissions"],
+            "summary": self.generate_result_summary(form),
         }
 
         return TemplateResponse(request, "admin/personforms/view_results.html", context)
