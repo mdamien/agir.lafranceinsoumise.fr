@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.gis.db.models.functions import Distance
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from django.http import HttpResponsePermanentRedirect, Http404
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -12,7 +12,7 @@ from .view_mixins import ReactListView, ReactSerializerBaseView, ReactBaseView
 from ..activity.models import Activity
 from ..activity.serializers import ActivitySerializer
 from ..authentication.view_mixins import SoftLoginRequiredMixin
-from ..events.models import Event
+from ..events.models import Event, OrganizerConfig
 from ..events.serializers import EventSerializer
 from ..groups.models import SupportGroup
 from ..groups.serializers import SupportGroupSerializer
@@ -103,8 +103,10 @@ class AgendaView(SoftLoginRequiredMixin, ReactSerializerBaseView):
     def get_export_data(self):
         person = self.request.user.person
 
+        base_queryset = Event.objects.with_person_organizer_configs(person)
+
         rsvped_events = (
-            Event.objects.upcoming()
+            base_queryset.upcoming()
             .filter(Q(attendees=person) | Q(organizers=person))
             .order_by("start_time", "end_time")
         )
@@ -121,7 +123,10 @@ class AgendaView(SoftLoginRequiredMixin, ReactSerializerBaseView):
 
         past_events = (
             Event.objects.past()
-            .filter(rsvps__person=person)
+            .filter(
+                Q(rsvps__person=person)
+                | Q(organizers_groups__in=person.supportgroups.all())
+            )
             .order_by("-start_time")[:10]
         )
 
@@ -142,19 +147,41 @@ class AgendaView(SoftLoginRequiredMixin, ReactSerializerBaseView):
             )
 
             other_events = (
-                Event.objects.filter(query | Q(pk__in=near_events))
+                base_queryset.filter(query | Q(pk__in=near_events))
                 .annotate(distance=Distance("coordinates", person.coordinates))
                 .order_by("start_time")
             )
         else:
-            other_events = Event.objects.filter(query).order_by("start_time")
+            other_events = base_queryset.filter(query).order_by("start_time")
+
+        fields = [
+            "id",
+            "name",
+            "participantCount",
+            "illustration",
+            "hasSubscriptionForm",
+            "startTime",
+            "endTime",
+            "location",
+            "isOrganizer",
+            "rsvps",
+            "routes",
+            "groups",
+            "distance",
+        ]
 
         return {
             "rsvped": self.serializer_class(
-                instance=rsvped_events, many=True, context={"request": self.request}
+                instance=rsvped_events,
+                many=True,
+                context={"request": self.request},
+                fields=fields,
             ).data,
             "others": self.serializer_class(
-                instance=other_events, many=True, context={"request": self.request}
+                instance=other_events,
+                many=True,
+                context={"request": self.request},
+                fields=fields,
             ).data,
         }
 

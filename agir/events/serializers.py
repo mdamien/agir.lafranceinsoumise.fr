@@ -96,13 +96,25 @@ class EventSerializer(FlexibleFieldsMixin, serializers.Serializer):
 
     def to_representation(self, instance):
         user = self.context["request"].user
-        self.organizer_config = self.rsvp = None
 
         if user.is_authenticated and user.person:
-            self.organizer_config = OrganizerConfig.objects.filter(
-                event=instance, person=user.person
-            ).first()
-            self.rsvp = RSVP.objects.filter(event=instance, person=user.person).first()
+            # this allow prefetching by queryset annotation for performances
+            if not hasattr(instance, "person_organizer_configs"):
+                self.organizer_config = OrganizerConfig.objects.filter(
+                    event=instance, person=user.person
+                ).first()
+            else:
+                self.organizer_config = (
+                    instance.person_organizer_configs[0]
+                    if len(instance.person_organizer_configs)
+                    else None
+                )
+            if not hasattr(instance, "prefetch_rsvp"):
+                self.rsvp = RSVP.objects.filter(
+                    event=instance, person=user.person
+                ).first()
+        else:
+            self.organizer_config = self.rsvp = None
 
         return super().to_representation(instance)
 

@@ -4,7 +4,7 @@ import ics
 import random
 import re
 from django.conf import settings
-from django.db.models import JSONField
+from django.db.models import JSONField, Prefetch
 from django.contrib.postgres.search import SearchVector, SearchRank
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -66,6 +66,15 @@ class EventQuerySet(models.QuerySet):
         if published_only:
             condition &= models.Q(visibility=Event.VISIBILITY_PUBLIC)
         return self.filter(condition)
+
+    def with_person_organizer_configs(self, person):
+        return self.prefetch_related(
+            Prefetch(
+                "organizer_configs",
+                queryset=OrganizerConfig.objects.filter(person=person),
+                to_attr="person_organizer_configs",
+            )
+        )
 
     def with_participants(self):
         confirmed_guests = Q(rsvps__identified_guests__status=RSVP.STATUS_CONFIRMED)
